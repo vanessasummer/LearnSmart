@@ -29,12 +29,12 @@ env.bak/
 venv.bak/
 
 # Virtual Environment - exclude only specific directories
-**/ai_diary_env/bin/
-**/ai_diary_env/lib/
-**/ai_diary_env/include/
-**/ai_diary_env/share/
-**/ai_diary_env/pyvenv.cfg
-**/ai_diary_env/.dart_tool/
+LS_env/bin/
+LS_env/lib/
+LS_env/include/
+LS_env/share/
+LS_env/pyvenv.cfg
+LS_env/.dart_tool/
 
 # IDE
 .vscode/
@@ -53,12 +53,12 @@ venv.bak/
 *.db
 *.sqlite
 *.sqlite3
-data/*.db
-data/*.sqlite
+backend/data/*.db
+backend/data/*.sqlite
 
 # Logs
 *.log
-logs/
+backend/logs/
 *.log.*
 
 # Testing
