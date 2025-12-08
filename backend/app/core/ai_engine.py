@@ -181,34 +181,103 @@ class AIEngine:
     ) -> Dict:
         """提取并保存5维信息"""
         
-        # 1. 判断学习来源
-        source = "active"  # 默认主动
-        if any(word in user_message for word in ["老师", "爸妈", "上课", "教了"]):
-            source = "passive"
-        
-        # 2. 提取知识点关键词
-        # (这里简化处理,后续可以调用豆包API做更精确的提取)
-        
-        # 3. 存入knowledge_points表
         conn = sqlite3.connect(settings.DATABASE_URL)
         cursor = conn.cursor()
         
+        result = {}
+        
+        # 1. 知识维度 - 学习来源
+        source = "active"
+        if any(word in user_message for word in ["老师", "爸妈", "上课", "教了", "讲了"]):
+            source = "passive"
+        
+        # 2. 知识维度 - 学科分类
+        subject = "其他"
+        subject_keywords = {
+            "数学": ["数学", "几何", "代数", "勾股定理", "方程", "立方体", "体积", "面积", "计算"],
+            "物理": ["物理", "力", "惯性", "密度", "速度", "能量", "摩擦", "运动"],
+            "化学": ["化学", "反应", "元素", "分子", "酸碱"],
+            "生物": ["生物", "光合作用", "细胞", "DNA", "植物", "动物"],
+            "语文": ["语文", "作文", "古诗", "成语", "阅读", "写作"],
+            "英语": ["英语", "单词", "语法", "句子"],
+            "地理": ["地理", "经纬度", "地图", "气候"],
+            "历史": ["历史", "朝代", "事件"]
+        }
+        
+        for subj, keywords in subject_keywords.items():
+            if any(kw in user_message or kw in ai_response for kw in keywords):
+                subject = subj
+                break
+        
+        # 存入knowledge_points
         cursor.execute("""
             INSERT INTO knowledge_points 
             (child_id, conversation_id, source, subject, content, created_at)
             VALUES (?, ?, ?, ?, ?, datetime('now', 'localtime'))
-        """, (
-            child_id,
-            conversation_id,
-            source,
-            "待分类",  # 后续改进
-            user_message[:200]  # 简单截取
-        ))
+        """, (child_id, conversation_id, source, subject, user_message[:200]))
+        
+        result["knowledge"] = {"source": source, "subject": subject}
+        
+        # 3. 社交维度
+        social_keywords = ["同学", "朋友", "老师", "爸妈", "打架", "吵架", "一起", "帮助", "玩"]
+        if any(kw in user_message for kw in social_keywords):
+            relationship_type = "peer"
+            if "老师" in user_message:
+                relationship_type = "teacher"
+            elif any(w in user_message for w in ["爸", "妈", "家人"]):
+                relationship_type = "family"
+            
+            cursor.execute("""
+                INSERT INTO social_events 
+                (child_id, conversation_id, relationship_type, event_context, created_at)
+                VALUES (?, ?, ?, ?, datetime('now', 'localtime'))
+            """, (child_id, conversation_id, relationship_type, user_message[:500]))
+            
+            result["social"] = {"relationship_type": relationship_type}
+        
+        # 4. 情绪维度
+        emotion_keywords = {
+            "positive": ["开心", "高兴", "快乐", "兴奋", "满意", "喜欢", "棒", "好"],
+            "negative": ["难过", "伤心", "生气", "害怕", "紧张", "担心", "疼"],
+            "neutral": ["还好", "一般", "平静"]
+        }
+        
+        detected_emotion = None
+        emotion_type = "neutral"
+        
+        for emo_type, keywords in emotion_keywords.items():
+            if any(kw in user_message for kw in keywords):
+                emotion_type = emo_type
+                detected_emotion = next((kw for kw in keywords if kw in user_message), None)
+                break
+        
+        if detected_emotion:
+            intensity = 7 if emotion_type == "positive" else 5
+            
+            cursor.execute("""
+                INSERT INTO emotions 
+                (child_id, conversation_id, emotion_type, intensity, trigger_event, created_at)
+                VALUES (?, ?, ?, ?, ?, datetime('now', 'localtime'))
+            """, (child_id, conversation_id, emotion_type, intensity, user_message[:200]))
+            
+            result["emotion"] = {"type": emotion_type, "intensity": intensity}
+        
+        # 5. 表达维度 - 写作素材
+        event_indicators = ["今天", "昨天", "刚才", "下午", "放学", "在", "和"]
+        if any(ind in user_message for ind in event_indicators) and len(user_message) > 15:
+            cursor.execute("""
+                INSERT INTO writing_materials 
+                (child_id, conversation_id, event_description, created_at)
+                VALUES (?, ?, ?, datetime('now', 'localtime'))
+            """, (child_id, conversation_id, user_message[:500]))
+            
+            result["writing"] = True
         
         conn.commit()
         conn.close()
-    
-        return {"source": source}
+        
+        logger.info(f"📊 提取信息: {result}")
+        return result
 
     
     def _create_conversation(self, child_id: int, mode: str) -> int:
