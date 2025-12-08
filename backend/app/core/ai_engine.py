@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Any
 from datetime import datetime
 
 import sqlite3  # 数据库
-
+import json #豆包5维信息提取
 
 # HTTP请求
 import requests
@@ -238,68 +238,86 @@ class AIEngine:
         """构建信息提取专用Prompt"""
         return """你是一个专业的儿童成长信息提取助手。请从对话中提取以下结构化信息,以JSON格式返回。
 
-        【提取规则】
-        1. **知识维度**:
-        - source: "active"(孩子主动学习/研究/发现) 或 "passive"(老师/家长教授)
-        - subject: 学科分类(数学/物理/化学/生物/语文/英语/地理/历史/编程/艺术/体育/其他)
-        - content: 知识点内容摘要(20字以内)
-        - confidence_score: 掌握程度(0.0-1.0)
+    【提取规则】
+    1. **知识维度**:
+    - source: "active"(孩子主动学习/研究/发现) 或 "passive"(老师/家长教授)
+    - subject: 学科分类(数学/物理/化学/生物/语文/英语/地理/历史/编程/艺术/体育/其他)
+    - content: 知识点内容摘要(20字以内)
+    - confidence_score: 掌握程度(0.0-1.0, 必填, 根据理解深度判断)
 
-        2. **表达维度(写作素材)**:
-        - event_time: 事件发生时间(今天/昨天/上周等)
-        - location: 地点(学校/家里/公园等)
-        - people: 涉及人物列表["人物1", "人物2"]
-        - event_description: 事件描述(50字以内)
-        - sensory_details: 感官细节{"视觉":"...", "听觉":"...", "触觉":"..."}
-        - feelings: 感受(开心/难过/兴奋等)
+    2. **表达维度(写作素材)** - ⚠️ 关键字段必填:
+    - event_time: 事件发生时间(今天/昨天/上周等, **必填**)
+    - location: 地点(学校/家里/公园等, **必填**)
+    - people: 涉及人物列表["人物1", "人物2"] (**必填,至少包含"我"**)
+    - event_description: 事件描述(50字以内, **必填**)
+    - sensory_details: 感官细节(**必填,尽可能提取视觉/听觉/嗅觉/味觉/触觉中的所有相关信息**)
+     格式: {"视觉":"...", "听觉":"...", "嗅觉":"...", "味觉":"...", "触觉":"..."}
+     提取规则:
+       * 视觉: 颜色/形状/动作/场景(如"油光发亮""篮球划过弧线")
+       * 听觉: 声音描述(如"咕嘟咕嘟声""进框的声音")
+       * 嗅觉: 气味描述(如"香喷喷""闻起来很香")
+       * 味觉: 味道描述(如"甜甜的""入口即化""酸酸的")
+       * 触觉: 触感/温度(如"软软的""烫烫的""冰凉")
+     示例: {"视觉": "篮球在空中划过弧线", "听觉": "篮球进框的声音", "触觉": "手心冒汗"}
+   - feelings: 感受描述(**必填**, 如: 开心/难过/兴奋/紧张等)
 
-        3. **社交维度**:
-        - relationship_type: "peer"(同伴) / "teacher"(老师) / "family"(家人)
-        - behavior_pattern: 行为模式(合作/竞争/冲突/帮助等)
-        - conflict_resolution: 冲突解决方式(道歉/协商/妥协/回避等,无冲突则为null)
 
-        4. **情绪维度**:
-        - emotion_type: "positive"(积极) / "negative"(消极) / "neutral"(中性)
-        - intensity: 强度(1-10的整数,**必须提供**,不能为null)  # ← 强调必须
-        - trigger_event: 触发事件(20字以内)
-        - coping_strategy: 应对策略(如何处理情绪,可为null)
+    3. **社交维度**:
+    - relationship_type: "peer"(同伴) / "teacher"(老师) / "family"(家人)
+    - behavior_pattern: 行为模式(合作/竞争/冲突/帮助/分享等)
+    - conflict_resolution: 冲突解决方式(道歉/协商/妥协/回避等,无冲突则为null)
 
-        【返回格式】
-        严格返回JSON格式,没有的维度设为null。示例:
+    4. **情绪维度**:
+    - emotion_type: "positive"(积极) / "negative"(消极) / "neutral"(中性)
+    - intensity: 强度(**必填, 1-10的整数**, 根据情绪词判断)
+        - 9-10: 特别/超级/非常(如"特别开心""超级兴奋")
+        - 7-8: 很/真(如"很高兴""真难过")
+        - 5-6: 普通程度(如"开心""难过")
+        - 3-4: 有点/略微(如"有点失望""略紧张")
+        - 1-2: 轻微(如"稍有不适")
+    - trigger_event: 触发事件(20字以内, **必填**)
+    - coping_strategy: 应对策略(如何处理情绪,可为null)
 
-        {
-        "knowledge": {
-            "source": "active",
-            "subject": "数学",
-            "content": "三角形面积公式",
-            "confidence_score": 0.8
+    【返回格式】
+    严格返回JSON格式,没有的维度设为null。示例:
+
+    {
+    "knowledge": {
+        "source": "active",
+        "subject": "物理",
+        "content": "观察水的沸腾过程",
+        "confidence_score": 0.7
+    },
+    "writing": {
+        "event_time": "昨天晚上",
+        "location": "家里厨房",
+        "people": ["我", "爸爸"],
+        "event_description": "和爸爸一起做科学实验观察水沸腾",
+        "sensory_details": {
+        "视觉": "水泡咕嘟咕嘟冒出来",
+        "听觉": "水泡咕嘟咕嘟声",
+        "触觉": "靠近时感受到热气"
         },
-        "writing": {
-            "event_time": "今天下午",
-            "location": "学校操场",
-            "people": ["小明", "小红"],
-            "event_description": "一起打篮球并且我投进了球",
-            "sensory_details": {"视觉": "篮球在空中划过弧线", "听觉": "篮球进框的声音"},
-            "feelings": "特别开心"
-        },
-        "social": {
-            "relationship_type": "peer",
-            "behavior_pattern": "合作",
-            "conflict_resolution": null
-        },
-        "emotion": {
-            "emotion_type": "positive",
-            "intensity": 8,
-            "trigger_event": "投进了好几个球",
-            "coping_strategy": null
-        }
-        }
+        "feelings": "好奇、兴奋"
+    },
+    "social": {
+        "relationship_type": "family",
+        "behavior_pattern": "合作",
+        "conflict_resolution": null
+    },
+    "emotion": {
+        "emotion_type": "positive",
+        "intensity": 8,
+        "trigger_event": "成功观察到水沸腾现象",
+        "coping_strategy": null
+    }
+    }
 
-        【注意】
-        - 只提取明确出现的信息,不要推测
-        - **emotion.intensity 必须是1-10的整数,不能为null**
-        - 如果某个维度完全没有相关信息,整个维度设为null
-        - 必须返回有效的JSON格式,不要有markdown代码块标记"""
+    【注意】
+    - ⚠️ 标记为**必填**的字段不能为null或空字符串
+    - 只提取明确出现的信息,不要过度推测
+    - 如果某个维度完全没有相关信息,整个维度设为null
+    - 必须返回有效的JSON格式,不要有markdown代码块标记"""
 
 
     def _load_memory_simple(self, child_id: int) -> str:
@@ -460,7 +478,33 @@ class AIEngine:
         # 3.2 写作素材
         if extracted.get("writing"):
             wr = extracted["writing"]
-            import json
+            
+            
+            # ✅ 新增: 必填字段验证
+            required_fields = ['event_time', 'location', 'people']
+            missing = [f for f in required_fields if not wr.get(f)]
+            if missing:
+                logger.warning(f"⚠️ 表达维度缺失必填字段: {missing}")
+                # 补充默认值
+                if not wr.get('event_time'):
+                    wr['event_time'] = '今天'
+                if not wr.get('location'):
+                    wr['location'] = '未知地点'
+                if not wr.get('people'):
+                    wr['people'] = ['我']
+            
+            # 处理feelings字段
+            event_desc = wr.get("event_description", user_message[:500])
+            feelings = wr.get("feelings", "")
+            if feelings:
+                event_desc = f"{event_desc} (感受: {feelings})"
+            
+            # 验证感官细节
+            sensory = wr.get("sensory_details", {})
+            if isinstance(sensory, dict):
+                filled = [k for k, v in sensory.items() if v and v != "null"]
+                if len(filled) < 2:
+                    logger.warning(f"⚠️ 感官细节不足(仅{len(filled)}项): {list(sensory.keys())}")
             
             cursor.execute("""
                 INSERT INTO writing_materials 
@@ -470,7 +514,7 @@ class AIEngine:
             """, (
                 child_id,
                 conversation_id,
-                wr.get("event_description", user_message[:500]),
+                event_desc,
                 wr.get("event_time"),
                 wr.get("location"),
                 json.dumps(wr.get("people", []), ensure_ascii=False) if wr.get("people") else None,
@@ -525,7 +569,6 @@ class AIEngine:
                 emo.get("coping_strategy")
             ))
             result["emotion"] = emo
-
         
         conn.commit()
         conn.close()
