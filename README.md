@@ -77,16 +77,37 @@ LearnSmart/
 
 ### 后端
 - **FastAPI** - 现代、快速的Web框架
-- **SQLAlchemy** - ORM数据库工具
-- **Pydantic** - 数据验证
+- **SQLite** - 数据库工具
+- **Pydantic** - 数据验证??
 - **Uvicorn** - ASGI服务器
 
 ### 前端（计划中）
 - **Flutter** - 跨平台移动应用框架
 
+### AI: 
+- **豆包API** - 火山引擎
+
+### 核心模块说明
+AI对话引擎 (app/core/ai_engine.py)
+负责调用豆包API、管理对话上下文、动态注入Memory。
+
+Memory管理器 (app/core/memory_manager.py)
+管理长期/短期/工作记忆，支持记忆检索与更新。
+
+信息提取引擎 (app/core/extractor.py)
+从对话中提取5维信息：知识点、作文素材、社交事件、情绪、性格、价值观。
+
+
+
 ## 开发指南
 
+###开发者
+- **芋圆被早教** - 中科院儿童发展心理学硕士
+
 ### 代码提交
+
+- **GitHub**
+- https://github.com/vanessasummer/LearnSmart
 
 ```bash
 git add .

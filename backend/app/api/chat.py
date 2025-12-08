@@ -1,30 +1,34 @@
 """对话API"""
 # ai_diary_backend/api/chat.py
 from fastapi import APIRouter, HTTPException
-from models.schemas import ChatRequest, ChatResponse
-from services.ai_engine import ai_engine
+from app.schemas.chat import ChatRequest, ChatResponse
+from app.core.ai_engine import AIEngine
 
 router = APIRouter()
+# 创建实例
+ai_engine = AIEngine()
 
 @router.post("/send", response_model=ChatResponse)
 async def send_message(request: ChatRequest):
-    """
-    发送对话消息
-    """
+    """发送消息"""
     try:
+        # 调用AI引擎
         result = await ai_engine.chat(
             child_id=request.child_id,
             message=request.message,
-            conversation_id=request.conversation_id,
             mode=request.mode
         )
         
+        # 检查结果
+        if not result.get("success", False):
+            raise HTTPException(status_code=500, detail=result.get("error", "AI对话失败"))
+        
+        # 返回响应
         return ChatResponse(
-            conversation_id=result["conversation_id"],
-            message=result["reply"],
-            mode=result["mode"],
-            turn_count=1,  # TODO: 从数据库计算实际轮次
-            extracted_info=result["extracted_info"]
+            message=result.get("response", ""),
+            conversation_id=result.get("conversation_id", 0)
         )
+    
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+

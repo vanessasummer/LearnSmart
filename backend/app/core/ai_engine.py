@@ -54,7 +54,12 @@ class AIEngine:
             logger.info(f"✅ AI回复成功: {ai_response[:50]}...")
             
             # 6-8步骤与之前相同
-            extracted_info = self._extract_info_simple(ai_response)
+            extracted_info = self._extract_and_save_info(
+                conversation_id=conversation_id,
+                child_id=child_id,
+                user_message=message,
+                ai_response=ai_response
+            )
             self._save_message(conversation_id, "user", message)
             self._save_message(conversation_id, "assistant", ai_response)
             turn_count = self._get_turn_count(conversation_id)
@@ -62,16 +67,20 @@ class AIEngine:
             logger.info(f"🎉 对话完成 - Conv:{conversation_id}, Turns:{turn_count}")
             
             return {
-                "reply": ai_response,
-                "conversation_id": conversation_id,
+                "success": True,  # 添加
+                "response": ai_response,  # 改字段名
                 "mode": mode,
                 "turn_count": turn_count,
                 "extracted_info": extracted_info
             }
             
         except Exception as e:
-            logger.error(f"❌ 对话失败: {e}")
-            raise
+            logger.error(f"❌ 对话失败: {e}", exc_info=True)
+            # ✅ 添加错误返回
+            return {
+                "success": False,
+                "error": str(e)
+            }
     
     def _call_doubao_api_with_sdk(
         self, 
@@ -163,15 +172,44 @@ class AIEngine:
     def _load_conversation_history(self, conversation_id: int) -> List[Dict]:
         return []
     
-    def _extract_info_simple(self, ai_response: str) -> Dict:
-        return {
-            "knowledge_points": [],
-            "writing_materials": [],
-            "social_events": [],
-            "emotions": [],
-            "personality_traits": [],
-            "values": []
-        }
+    def _extract_and_save_info(
+    self, 
+    conversation_id: int,
+    child_id: int,
+    user_message: str,
+    ai_response: str
+    ) -> Dict:
+        """提取并保存5维信息"""
+        
+        # 1. 判断学习来源
+        source = "active"  # 默认主动
+        if any(word in user_message for word in ["老师", "爸妈", "上课", "教了"]):
+            source = "passive"
+        
+        # 2. 提取知识点关键词
+        # (这里简化处理,后续可以调用豆包API做更精确的提取)
+        
+        # 3. 存入knowledge_points表
+        conn = sqlite3.connect(settings.DATABASE_URL)
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            INSERT INTO knowledge_points 
+            (child_id, conversation_id, source, subject, content, created_at)
+            VALUES (?, ?, ?, ?, ?, datetime('now', 'localtime'))
+        """, (
+            child_id,
+            conversation_id,
+            source,
+            "待分类",  # 后续改进
+            user_message[:200]  # 简单截取
+        ))
+        
+        conn.commit()
+        conn.close()
+    
+        return {"source": source}
+
     
     def _create_conversation(self, child_id: int, mode: str) -> int:
         """创建新对话会话"""
