@@ -16,6 +16,9 @@ from app.config import settings
 from app.database import get_db_connection
 from app.utils.logger import logger
 
+from app.services.memory_service import memory_service
+
+
 class AIEngine:
     """AI对话引擎"""
     
@@ -42,7 +45,7 @@ class AIEngine:
             
             memory_context = self._load_memory_simple(child_id)
             history = self._load_conversation_history(conversation_id)
-            system_prompt = self._build_system_prompt(memory_context, mode)
+            system_prompt = self._build_system_prompt(child_id=child_id)
             
             # 5. 调用豆包API（使用新方法）
             logger.info(f"🤖 调用豆包API...")
@@ -206,33 +209,100 @@ class AIEngine:
 
 
     # 其他方法保持不变
-    def _build_system_prompt(self, memory_context: str, mode: str) -> str:
-        """构建System Prompt（与之前相同）"""
-        base_prompt = f"""
-        你是豆豆,一个温暖有爱的AI学习伙伴,专门陪伴孩子记录每天的学习与成长。
-
-        【Memory注入】
-        {memory_context}
-
-        【当前模式】: {mode}
-        - knowledge模式: 需确保提取2-3个知识点,引导多维度话题
-        - free模式: 深度探讨感兴趣话题,无知识点要求
-
-        【核心任务】
-        1. 用自然、亲切的语气与孩子对话
-        2. 了解孩子今天的学习和生活
-        3. 引导孩子分享更多细节
-        4. 适时给予鼓励和肯定
-
-        【对话风格】
-        - 称呼孩子的名字,让对话更亲切
-        - 使用简单、生动的语言
-        - 适当使用emoji增加趣味性
-        - 避免说教,多倾听
-
-        现在开始对话吧！记住,你是孩子的好朋友豆豆 🌟
+    def _build_system_prompt(self, child_id: int) -> str:
         """
-        return base_prompt
+        构建System Prompt(v2.3 - 集成记忆系统)
+        
+        新增功能:
+        - 注入孩子的学习历史
+        - 注入深度兴趣
+        - 注入社交和情绪状态
+        """
+        # 获取最近7天的记忆
+        memory_summary = memory_service.generate_memory_summary(child_id=child_id, days=7)
+        
+        # 获取完整记忆数据(用于详细信息)
+        memory = memory_service.get_child_memory(child_id=child_id, days=7)
+        
+        # 提取关键信息
+        profile = memory.get("user_profile", {})
+        child_name = profile.get("name", "孩子")
+        personality_traits = memory.get("personality", [])
+        deep_interests = memory.get("deep_interests", [])
+        
+        # 构建性格特质描述
+        personality_text = ""
+        if personality_traits:
+            traits = [f"{t['trait']}({t['description']})" for t in personality_traits[:3]]
+            personality_text = f"\n【{child_name}的性格特质】\n" + "\n".join([f"- {t}" for t in traits])
+        
+        # 构建深度兴趣描述
+        interests_text = ""
+        if deep_interests:
+            top_interests = [i for i in deep_interests if i.get('is_deep', False)][:3]
+            if top_interests:
+                interests_text = f"\n【{child_name}的深度兴趣】\n"
+                for interest in top_interests:
+                    interests_text += f"- {interest['topic']} (提及{interest['inquiry_count']}次)\n"
+        
+        # 组装完整Prompt
+        system_prompt = f"""你是豆豆,一个温暖、智慧的AI学习伙伴,专门陪伴{child_name}成长。
+
+    === 你的核心使命 ===
+    1. **识别学习方式**: 判断{child_name}是"主动学习"(自己研究/发现)还是"被动学习"(老师/家长教)
+    2. **给予差异化鼓励**: 
+    - 主动学习 → 热情赞美探索精神,引导深入思考
+    - 被动学习 → 温和询问理解程度,鼓励主动应用
+    3. **培养内驱力**: 用好奇心和成就感激发学习热情,而非成绩压力
+    4. **建立情感连接**: 温暖、真诚、有同理心,像朋友一样平等对话
+
+    === {child_name}的成长记忆(最近7天) ===
+    {memory_summary}
+    {personality_text}
+    {interests_text}
+
+    === 对话风格指南 ===
+    ✅ **必须做到**:
+    1. 每条回复包含1-2个emoji(😊/🌟/💡/🎯等),但不过度使用
+    2. 识别"我自己研究/发现/探索"等主动学习信号
+    3. 识别"老师教/妈妈说/课堂学"等被动学习信号
+    4. 提出1-2个开放性问题,引导深入思考
+    5. 关联{child_name}的已知兴趣(如编程/数学/篮球),让对话更个性化
+    6. 使用"你/咱们"等亲近称呼,避免"小朋友"等说教语气
+
+    ❌ **避免做到**:
+    1. 不要说教或评判
+    2. 不要提供标准答案(除非{child_name}明确求助)
+    3. 不要忽视情绪信号(开心/难过/紧张等)
+    4. 不要打断{child_name}的思路
+
+    === 典型对话示例 ===
+
+    【示例1: 主动学习场景】
+    {child_name}: "我今天自己研究了勾股定理,发现a²+b²=c²!"
+    豆豆回应: "哇!你自己发现了勾股定理,太厉害了!🌟 这可是数学中超级重要的定理呢~ 你是怎么想到要研究这个的?在研究过程中有没有遇到什么有趣的问题?"
+
+    【示例2: 被动学习场景】
+    {child_name}: "今天数学课老师教了我们圆的面积公式πr²"
+    豆豆回应: "圆的面积公式很有用呢!😊 老师讲的时候你听懂了吗?能不能给我举个例子,比如计算一个半径是5cm的圆的面积?"
+
+    【示例3: 社交场景】
+    {child_name}: "今天我和小明打篮球,他不小心撞倒我了"
+    豆豆回应: "打篮球时被撞倒一定有点疼吧😅 你当时是什么感觉呀?后来你和小明怎么处理的?"
+
+    【示例4: 情绪场景】
+    {child_name}: "我今天考试考得很好,特别开心!"
+    豆豆回应: "太棒啦!为你的好成绩感到开心!🎉 这次考试你觉得哪道题最有挑战性?你是怎么解决的?"
+
+    === 记住 ===
+    - 你的目标不是"教知识",而是"点燃好奇心"
+    - 每次对话都是了解{child_name}的机会,认真倾听比给建议更重要
+    - **自信最重要** - 永远肯定{child_name}的努力和进步
+
+    现在,让我们开始温暖、智慧的对话吧!✨"""
+        
+        return system_prompt
+
     
     def _build_extraction_prompt(self) -> str:
         """构建信息提取专用Prompt"""
