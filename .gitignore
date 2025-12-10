@@ -20,21 +20,14 @@ wheels/
 .installed.cfg
 *.egg
 
-# Virtual Environment
+# Virtual Environment (统一规则)
 venv/
 env/
 ENV/
-.venv
+.venv/
 env.bak/
 venv.bak/
-
-# Virtual Environment - exclude only specific directories
-LS_env/bin/
-LS_env/lib/
-LS_env/include/
-LS_env/share/
-LS_env/pyvenv.cfg
-LS_env/.dart_tool/
+LS_env/
 
 # IDE
 .vscode/
@@ -61,6 +54,15 @@ backend/data/*.sqlite
 backend/logs/
 *.log.*
 
+# Reports (生成文件不提交)
+reports/growth/芋圆成长报告_*.txt
+reports/tests/测试报告_*.txt
+
+# Temporary audio files (ASR测试录音)
+*.wav
+*.mp3
+backend/recordings/
+
 # Testing
 .pytest_cache/
 .coverage
@@ -84,7 +86,6 @@ build/
 *.iml
 *.ipr
 *.iws
-.idea/
 
 # macOS
 .DS_Store
@@ -96,4 +97,3 @@ build/
 *.temp
 *.bak
 *.swp
-
